@@ -420,5 +420,13 @@ MIT
 
 ## Contributing
 
-See PRD.md for full requirements and architecture.
+We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+
+## Security
+
+For security concerns, see [SECURITY.md](SECURITY.md).
+
+## License
+
+MIT License - see [LICENSE](LICENSE) file for details.
 

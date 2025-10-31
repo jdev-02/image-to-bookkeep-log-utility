@@ -19,6 +19,10 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
 
 # Virtual environments
 venv/
@@ -43,9 +47,36 @@ htmlcov/
 staging/
 exports/
 *.log
+*.csv
+*.xlsx
+*.xls
+report.md
+
+# Credentials and secrets
 credentials.json
+client_secret*.json
+client_secrets.json
+google_credentials.json
 token.json
+*.json.json  # Double extension files
 ~/.config/itbl/
+
+# Test images (keep README but ignore actual images)
+examples/inbox/*.jpg
+examples/inbox/*.jpeg
+examples/inbox/*.png
+examples/inbox/*.tiff
+examples/inbox/*.tif
+examples/inbox/*.heic
+examples/inbox/*.heif
+examples/inbox/*.HEIC
+examples/inbox/*.HEIF
+examples/inbox/*.PNG
+examples/inbox/*.JPG
+examples/inbox/*.JPEG
+
+# Build artifacts
+src/itbl.egg-info/
 
 # OS
 .DS_Store
