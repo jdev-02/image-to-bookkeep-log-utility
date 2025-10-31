@@ -1,0 +1,15 @@
+date_formats: ["%m/%d/%Y","%Y-%m-%d","%b %d, %Y"]
+currency_symbols: ["$", "USD"]
+triage:
+  ocr_conf_threshold: 0.80
+  amount_delta_pct: 0.05
+  reasons: ["low_conf","multi_candidates","parse_error","rule_violation","category_conflict","incomplete"]
+summary_tax_treatment:
+  Marketing: "Deductible"
+  R&D: "Deductible"
+  Home Office: "Deductible (limitations apply)"
+  Insurance: "Varies by policy"
+csv:
+  annotate_inline: true
+  triage_column: "_triage"
+

@@ -1,0 +1,18 @@
+tabs:
+  Revenue: ["Date","Customer/Source","Description","Invoice #","Amount","Payment Method"]
+  COGS: ["Date","Vendor/Supplier","Item/Description","Product Line","Amount","Payment Method"]
+  R&D: ["Date","Vendor/Payee","Item/Description","Business Purpose","Amount","Payment Method"]
+  Professional Services: ["Date","Vendor/Provider","Service/Description","Business Purpose","Amount","Payment Method"]
+  Transportation: ["Date","From","To","Business Purpose","Miles","Rate/Mile","Amount"]
+  Home Office: ["Expense Type","Total Annual","Business %","Office %","Calculation","Deductible Amount"]
+  Phone & Internet: ["Service Type","Monthly Cost","Annual Cost","Business %","Calculation","Deductible Amount"]
+  Office Supplies: ["Date","Vendor","Item/Description","Business Purpose","Amount","Payment Method"]
+  Marketing: ["Date","Vendor/Platform","Campaign/Description","Marketing Type","Amount","Payment Method"]
+  Insurance: ["Date","Insurance Company","Policy Type","Coverage Period","Amount","Payment Method"]
+  Bank Fees: ["Date","Financial Institution","Fee Type","Business Purpose","Amount","Account"]
+  Summary: ["Category","Amount","Notes","Tax Treatment"]
+personal_expense_tab: "Personal Expenses"
+highlight:
+  color: "#FFF59D"
+  strict_level: "medium"
+

@@ -1,0 +1,22 @@
+- match: "Amazon Web Services"
+  category: "COGS"
+  hints:
+    product_line: "Cloud"
+    payment_method: "ACH"
+- match: "Blue Cross"
+  category: "Insurance"
+  hints:
+    policy_type: "Health"
+- match_regex: "(?i)google ads|meta ads|x ads"
+  category: "Marketing"
+  hints:
+    marketing_type: "Paid Ads"
+- match: "Office Depot"
+  category: "Office Supplies"
+  hints:
+    payment_method: "Credit Card"
+- match: "Staples"
+  category: "Office Supplies"
+  hints:
+    payment_method: "Credit Card"
+
