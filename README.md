@@ -203,6 +203,10 @@ Cells are highlighted yellow when:
 
 ## Google Sheets Setup
 
+For detailed step-by-step instructions with screenshots and troubleshooting, see [docs/GOOGLE_SHEETS_SETUP.md](docs/GOOGLE_SHEETS_SETUP.md).
+
+Quick setup:
+
 1. **Create Google Cloud Project**:
    - Go to [Google Cloud Console](https://console.cloud.google.com/)
    - Create a new project (this is free and gives you access to Google's APIs)
@@ -211,21 +215,49 @@ Cells are highlighted yellow when:
    - Enable "Google Sheets API" (allows the tool to read/write to your Google Sheets)
    - Enable "Google Drive API" (if needed for file access)
 
-3. **Create Credentials** (secure login tokens):
+3. **Configure OAuth Consent Screen**:
+   - Go to "APIs & Services" > "OAuth consent screen"
+   - Choose "External" (unless you have a Google Workspace, then use "Internal")
+   - Fill in required fields:
+     - App name: "Image-to-Bookkeeping-Log" (or any name you prefer)
+     - User support email: Your email
+     - Developer contact email: Your email
+   - Click "Save and Continue"
+   - For Scopes: Click "Add or Remove Scopes", search for and add:
+     - `https://www.googleapis.com/auth/spreadsheets` (Google Sheets API)
+   - Click "Save and Continue"
+   - For Test users: **IMPORTANT** - Click "ADD USERS" and add your own Google account email address (the one you'll sign in with)
+   - Click "Save and Continue" through the remaining screens
+
+4. **Create Credentials** (secure login tokens):
    - Go to "APIs & Services" > "Credentials"
-   - Create OAuth 2.0 Client ID (Desktop app) - this lets the tool access your Google account securely
-   - Download the JSON file as `credentials.json`
+   - Click "Create Credentials" > "OAuth 2.0 Client ID"
+   - Application type: Choose "Desktop app"
+   - Name: "Image-to-Bookkeeping-Log Client" (or any name)
+   - Click "Create"
+   - Click "Download JSON" - this downloads your credentials file
+   - Save it as `credentials.json`
 
-4. **Place credentials** on your computer:
-   ```bash
-   mkdir -p ~/.config/itbl
-   cp credentials.json ~/.config/itbl/
-   ```
+5. **Place credentials** on your computer:
+   - **Windows**: `C:\Users\YourUsername\.config\itbl\credentials.json`
+   - **macOS/Linux**: `~/.config/itbl/credentials.json`
+   - Or place `credentials.json` in your current working directory
+   - Or use `--credentials` flag to specify the path
+   - Or set `GOOGLE_APPLICATION_CREDENTIALS` environment variable
 
-5. **First run**:
-   - Run `itbl write --target google-sheets --sheet-id <ID>` (replace `<ID>` with your Google Sheet's ID from the URL)
+6. **First run**:
+   - Run `itbl parse ./inbox --target google-sheets --sheet-id <ID>` (replace `<ID>` with your Google Sheet's ID from the URL)
    - Browser will open for authentication (you'll log in to Google and grant permission)
+   - **Important**: Make sure you're signing in with the same Google account you added as a test user in step 3
    - Token stored in `~/.config/itbl/token.json` (so you don't have to log in every time)
+
+**Note**: The tool will automatically search for credentials files named:
+- `credentials.json`
+- `client_secret.json`
+- `client_secrets.json`
+- `google_credentials.json`
+
+in the config directory or current directory, so you don't need to rename your downloaded file if it has one of these names.
 
 ## Development
 
@@ -290,6 +322,38 @@ Place test images in `tests/fixtures/`:
 **Chocolatey (choco) not recognized:**
 - That's okay! Use Option A (Direct Download) from the Installation section above - it's the recommended method
 - Chocolatey is just a convenience tool; you don't need it to install Tesseract
+
+**Google Sheets credentials not found:**
+- Make sure the JSON file is named `credentials.json` (or one of: `client_secret.json`, `client_secrets.json`, `google_credentials.json`)
+- Place it in `C:\Users\YourUsername\.config\itbl\` or your current working directory
+- Or specify the path with `--credentials /path/to/file.json`
+- Or set the `GOOGLE_APPLICATION_CREDENTIALS` environment variable
+- The error message will show the exact locations the tool is searching
+
+**"Error 403: access_denied" or "App is being tested" error:**
+- This means your OAuth app is in "Testing" mode and your Google account isn't approved
+- **IMPORTANT**: You MUST add your Google account as a test user before signing in
+
+**"I don't see 'Test users' section" (Can't find it even with Ctrl+F):**
+- **Most likely cause**: Your app is in "Production" mode, not "Testing" mode
+- **Fix**: 
+  1. On the OAuth consent screen page, look at the TOP for "Publishing status"
+  2. If it says "In production" or "Published", look for a "BACK TO TESTING" or "UNPUBLISH" button
+  3. Click it to switch back to Testing mode
+  4. The "Test users" section should now appear
+- **See [docs/NO_TEST_USERS_SECTION.md](docs/NO_TEST_USERS_SECTION.md) for detailed help**
+
+**If you CAN see "Test users" section** - Quick Fix:
+  1. Go to [Google Cloud Console](https://console.cloud.google.com/)
+  2. Select your project
+  3. Go to "APIs & Services" → "OAuth consent screen"
+  4. Scroll down to "Test users" section (near the bottom)
+  5. Click "ADD USERS"
+  6. Enter your **exact Google email address** (check for typos!)
+  7. Click "Add" 
+  8. **Important**: Scroll to the bottom and click "Save"
+  9. Wait a few seconds, then try again
+- **Still stuck?** See [docs/TROUBLESHOOTING_403_ERROR.md](docs/TROUBLESHOOTING_403_ERROR.md) for detailed instructions
 
 ## Limitations
 

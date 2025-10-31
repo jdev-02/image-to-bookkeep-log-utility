@@ -23,16 +23,88 @@ class GoogleSheetsWriter(WriterBase):
     """Google Sheets writer with highlighting support."""
 
     SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
-    CREDENTIALS_FILE = Path.home() / ".config" / "itbl" / "credentials.json"
+    
+    @staticmethod
+    def _get_credentials_path() -> Path:
+        """Get credentials file path, checking environment variable and common locations."""
+        import os
+        
+        # Check environment variable first
+        env_path = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
+        if env_path:
+            return Path(env_path)
+        
+        # Default location
+        default_path = Path.home() / ".config" / "itbl" / "credentials.json"
+        return default_path
+    
+    @staticmethod
+    def _find_credentials_file() -> Path | None:
+        """Try to find credentials file in various locations and names."""
+        import os
+        
+        # Check environment variable
+        env_path = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
+        if env_path:
+            path = Path(env_path)
+            if path.exists():
+                return path
+        
+        # Check default location with various names
+        config_dir = Path.home() / ".config" / "itbl"
+        possible_names = [
+            "credentials.json",
+            "client_secret.json",
+            "client_secrets.json",
+            "google_credentials.json",
+        ]
+        
+        # Also check for files with double .json extension (common download issue)
+        possible_names_with_double_json = [
+            "credentials.json.json",
+            "client_secret.json.json",
+            "client_secrets.json.json",
+        ]
+        
+        # Check standard names first
+        for name in possible_names:
+            path = config_dir / name
+            if path.exists():
+                return path
+        
+        # Check for double .json extension (e.g., client_secret.json.json)
+        for name in possible_names_with_double_json:
+            path = config_dir / name
+            if path.exists():
+                logger.info(f"Found credentials file with double .json extension: {path}")
+                return path
+        
+        # Check current directory
+        for name in possible_names:
+            path = Path(name)
+            if path.exists():
+                return path
+        
+        # Check current directory for double .json
+        for name in possible_names_with_double_json:
+            path = Path(name)
+            if path.exists():
+                logger.info(f"Found credentials file with double .json extension: {path}")
+                return path
+        
+        return None
+
+    CREDENTIALS_FILE = _get_credentials_path()
     TOKEN_FILE = Path.home() / ".config" / "itbl" / "token.json"
 
-    def __init__(self, sheet_id: str, highlight_color: str = "#FFF59D"):
+    def __init__(self, sheet_id: str, highlight_color: str = "#FFF59D", credentials_path: Path | None = None):
         """
         Initialize Google Sheets writer.
         
         Args:
             sheet_id: Google Sheets ID (from URL)
             highlight_color: Hex color for highlights (default: yellow #FFF59D)
+            credentials_path: Optional path to credentials file (overrides auto-detection)
         """
         if not GOOGLE_AVAILABLE:
             raise ImportError(
@@ -41,6 +113,20 @@ class GoogleSheetsWriter(WriterBase):
         self.sheet_id = sheet_id
         self.highlight_color = highlight_color
         self.service = None
+        
+        # Use provided path or try to find credentials
+        if credentials_path:
+            self.CREDENTIALS_FILE = Path(credentials_path)
+        else:
+            found = self._find_credentials_file()
+            if found:
+                self.CREDENTIALS_FILE = found
+            # If not found, keep the default path but we'll check existence in _authenticate
+            # This allows the error message to show helpful information
+        
+        # Log what we're using for debugging
+        logger.debug(f"Using credentials file: {self.CREDENTIALS_FILE} (exists: {self.CREDENTIALS_FILE.exists()})")
+        
         self._authenticate()
 
     def _authenticate(self):
@@ -57,10 +143,43 @@ class GoogleSheetsWriter(WriterBase):
                 creds.refresh(Request())
             else:
                 if not self.CREDENTIALS_FILE.exists():
-                    raise FileNotFoundError(
-                        f"Credentials file not found: {self.CREDENTIALS_FILE}\n"
-                        "See README.md for Google Sheets setup instructions."
+                    # Provide helpful error message with suggestions
+                    config_dir = Path.home() / ".config" / "itbl"
+                    current_dir = Path.cwd()
+                    
+                    # Check what files actually exist (including .json.json files)
+                    existing_files = []
+                    if config_dir.exists():
+                        for f in config_dir.iterdir():
+                            if f.is_file() and (f.suffix.lower() == '.json' or f.name.endswith('.json.json')):
+                                existing_files.append(f.name)
+                    if current_dir.exists():
+                        for f in current_dir.iterdir():
+                            if f.is_file() and (f.suffix.lower() == '.json' or f.name.endswith('.json.json')):
+                                existing_files.append(f.name)
+                    
+                    error_msg = (
+                        f"Credentials file not found: {self.CREDENTIALS_FILE}\n\n"
+                        f"Please place your Google credentials JSON file in one of these locations:\n"
+                        f"  - {config_dir / 'credentials.json'}\n"
+                        f"  - {current_dir / 'credentials.json'}\n"
+                        f"  - Or set GOOGLE_APPLICATION_CREDENTIALS environment variable\n"
+                        f"  - Or use --credentials /path/to/file.json flag\n\n"
+                        f"Alternatively, use a file named: credentials.json, client_secret.json, "
+                        f"client_secrets.json, or google_credentials.json\n\n"
+                        f"Current directory: {current_dir}\n"
+                        f"Config directory: {config_dir} (exists: {config_dir.exists()})\n"
                     )
+                    
+                    if existing_files:
+                        error_msg += f"\nFound these JSON files (might need to rename):\n"
+                        for fname in existing_files:
+                            error_msg += f"  - {fname}\n"
+                    else:
+                        error_msg += f"\nNo JSON files found in config or current directory.\n"
+                    
+                    error_msg += f"\nSee README.md for Google Sheets setup instructions."
+                    raise FileNotFoundError(error_msg)
                 flow = InstalledAppFlow.from_client_secrets_file(
                     str(self.CREDENTIALS_FILE), self.SCOPES
                 )

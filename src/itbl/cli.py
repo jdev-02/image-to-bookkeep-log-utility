@@ -37,6 +37,8 @@ def parse_command(
     csv_annotate: bool = False,
     config_dir: Optional[Path] = None,
     no_network: bool = True,
+    sheet_id: Optional[str] = None,
+    credentials_path: Optional[Path] = None,
 ) -> int:
     """
     Parse images and generate normalized output.
@@ -77,7 +79,11 @@ def parse_command(
             if not sheet_id:
                 logger.error("--sheet-id required for Google Sheets")
                 return 3
-            writer = GoogleSheetsWriter(sheet_id=sheet_id, highlight_color=highlight_color)
+            writer = GoogleSheetsWriter(
+                sheet_id=sheet_id,
+                highlight_color=highlight_color,
+                credentials_path=credentials_path,
+            )
         else:
             logger.error(f"Unsupported target: {target}")
             return 3
@@ -211,6 +217,7 @@ def write_command(
     sheet_id: Optional[str] = None,
     apply_highlights: bool = False,
     input_path: Optional[Path] = None,
+    credentials_path: Optional[Path] = None,
 ) -> int:
     """
     Write staged output to Google Sheets.
@@ -230,7 +237,10 @@ def write_command(
         return 3
 
     try:
-        writer = GoogleSheetsWriter(sheet_id=sheet_id)
+        writer = GoogleSheetsWriter(
+            sheet_id=sheet_id,
+            credentials_path=credentials_path,
+        )
         # TODO: Read from staged files and write to Sheets
         logger.warning("write command: reading from staged files not yet implemented")
         logger.info("Use 'itbl parse' with --target google-sheets instead")
@@ -289,6 +299,7 @@ def main():
     parse_parser.add_argument("--config", type=Path, help="Config directory")
     parse_parser.add_argument("--no-network", action="store_true", default=True, help="Enforce offline mode")
     parse_parser.add_argument("--sheet-id", help="Google Sheets ID (required for google-sheets target)")
+    parse_parser.add_argument("--credentials", type=Path, help="Path to Google credentials JSON file (optional, auto-detected if not specified)")
 
     # write command
     write_parser = subparsers.add_parser("write", help="Write to Google Sheets")
@@ -296,6 +307,7 @@ def main():
     write_parser.add_argument("--sheet-id", required=True, help="Google Sheets ID")
     write_parser.add_argument("--apply-highlights", action="store_true", help="Apply yellow highlights")
     write_parser.add_argument("--input", type=Path, help="Staged input path (not yet implemented)")
+    write_parser.add_argument("--credentials", type=Path, help="Path to Google credentials JSON file (optional, auto-detected if not specified)")
 
     # review command
     review_parser = subparsers.add_parser("review", help="Interactive review")
@@ -330,6 +342,7 @@ def main():
             config_dir=args.config,
             no_network=args.no_network,
             sheet_id=getattr(args, "sheet_id", None),
+            credentials_path=getattr(args, "credentials", None),
         )
     elif args.command == "write":
         return write_command(
@@ -337,6 +350,7 @@ def main():
             sheet_id=getattr(args, "sheet_id", None),
             apply_highlights=args.apply_highlights,
             input_path=getattr(args, "input", None),
+            credentials_path=getattr(args, "credentials", None),
         )
     elif args.command == "review":
         return review_command(args.input)
