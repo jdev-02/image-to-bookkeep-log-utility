@@ -17,6 +17,7 @@ def preprocess_image(
     deskew: bool = True,
     denoise: bool = True,
     binarize: bool = False,
+    enhance_contrast: bool = True,
 ) -> Image.Image:
     """
     Preprocess image for OCR.
@@ -50,6 +51,10 @@ def preprocess_image(
     else:
         gray = img_cv
 
+    # Enhance contrast (improves OCR accuracy)
+    if enhance_contrast:
+        gray = cv2.convertScaleAbs(gray, alpha=1.5, beta=10)  # Increase contrast and brightness
+    
     # Denoise
     if denoise:
         gray = cv2.fastNlMeansDenoising(gray, None, h=10)
@@ -58,11 +63,15 @@ def preprocess_image(
     if deskew:
         gray = _deskew_image(gray)
 
-    # Binarize (threshold)
+    # Binarize (threshold) - improves OCR for low-quality images
     if binarize:
         _, gray = cv2.threshold(
             gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU
         )
+    elif enhance_contrast:
+        # If not binarizing, apply CLAHE (adaptive histogram equalization) to improve contrast
+        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+        gray = clahe.apply(gray)
 
     # Convert back to PIL
     if len(image.mode) == "RGB" or not binarize:

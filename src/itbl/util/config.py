@@ -18,10 +18,12 @@ def get_config_dir() -> Path:
     return Path(__file__).parent.parent.parent / "config"
 
 
-def load_yaml(config_name: str, config_dir: Path | None = None) -> Dict[str, Any]:
+def load_yaml(config_name: str, config_dir: Path | str | None = None) -> Dict[str, Any]:
     """Load a YAML config file."""
     if config_dir is None:
         config_dir = get_config_dir()
+    elif isinstance(config_dir, str):
+        config_dir = Path(config_dir)
     config_path = config_dir / config_name
     if not config_path.exists():
         raise FileNotFoundError(f"Config file not found: {config_path}")
@@ -29,17 +31,17 @@ def load_yaml(config_name: str, config_dir: Path | None = None) -> Dict[str, Any
         return yaml.safe_load(f)
 
 
-def load_sheets_config(config_dir: Path | None = None) -> Dict[str, Any]:
+def load_sheets_config(config_dir: Path | str | None = None) -> Dict[str, Any]:
     """Load sheets.yaml configuration."""
     return load_yaml("sheets.yaml", config_dir)
 
 
-def load_rules_config(config_dir: Path | None = None) -> Dict[str, Any]:
+def load_rules_config(config_dir: Path | str | None = None) -> Dict[str, Any]:
     """Load rules.yaml configuration."""
     return load_yaml("rules.yaml", config_dir)
 
 
-def load_vendors_config(config_dir: Path | None = None) -> Dict[str, Any]:
+def load_vendors_config(config_dir: Path | str | None = None) -> Dict[str, Any]:
     """Load vendors.yaml configuration."""
     return load_yaml("vendors.yaml", config_dir)
 

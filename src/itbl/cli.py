@@ -25,6 +25,23 @@ from itbl.util.logging import setup_logging
 logger = setup_logging()
 
 
+def _looks_like_statement(text: str) -> bool:
+    """Heuristic: does text look like a bank/credit card statement with multiple transactions?"""
+    import re
+    # Look for pattern: multiple lines with amounts (likely multiple transactions)
+    amount_pattern = r'\$\d+\.\d{2}'
+    amounts = re.findall(amount_pattern, text)
+    # If we see 3+ dollar amounts, likely a statement
+    if len(amounts) >= 3:
+        return True
+    # Also check for patterns like "VENDOR $amount" appearing multiple times
+    vendor_amount_pattern = r'[A-Z][A-Z\s&]+?\$\d+\.\d{2}'
+    matches = re.findall(vendor_amount_pattern, text)
+    if len(matches) >= 2:
+        return True
+    return False
+
+
 def parse_command(
     input_path: Path,
     output_path: Path,
@@ -62,6 +79,7 @@ def parse_command(
             return 3
 
         extractor = FieldExtractor(date_formats=date_formats, currency_symbols=currency_symbols)
+        # Pass config_dir as Path (or None) - Classifier will handle it
         classifier = Classifier(config_dir=str(config_dir) if config_dir else None)
         validator = Validator(strict_level=strict_level)
         triage_engine = TriageEngine(strict_level=strict_level) if triage else None
@@ -105,16 +123,53 @@ def parse_command(
 
                 # Load and preprocess
                 image = load_image(img_path)
-                processed = preprocess_image(image)
+                # Try enhanced preprocessing for better OCR (binarization helps low-quality images)
+                processed = preprocess_image(image, binarize=True, enhance_contrast=True)
 
-                # OCR
+                # OCR - try default settings first
                 ocr_result = ocr_backend.extract(processed)
+                
+                # If confidence is very low, try alternative PSM mode (single column)
+                if ocr_result.confidence < 0.50 and hasattr(ocr_backend, 'extract'):
+                    logger.warning(f"⚠️  Low OCR confidence ({ocr_result.confidence:.2f}), trying alternative mode...")
+                    try:
+                        alt_result = ocr_backend.extract(processed, psm=3)  # Fully automatic page segmentation
+                        if alt_result.confidence > ocr_result.confidence:
+                            ocr_result = alt_result
+                            logger.info(f"✓ Better OCR with alternative mode: {ocr_result.confidence:.2f}")
+                    except Exception:
+                        pass  # Fall back to original result
+                
+                # Log OCR text for debugging in dry-run mode
+                if dry_run:
+                    ocr_preview = ocr_result.text[:500].replace('\n', ' ').strip() if ocr_result.text else "(empty)"
+                    logger.info(f"OCR confidence: {ocr_result.confidence:.2f}")
+                    if ocr_result.confidence < 0.50:
+                        logger.warning(f"⚠️  Low OCR confidence - extracted text may be unreliable")
+                    if ocr_result.text:
+                        logger.info(f"OCR extracted text (first 500 chars): {ocr_preview}...")
+                        if len(ocr_result.text) > 500:
+                            logger.info(f"... (total {len(ocr_result.text)} characters)")
+                    else:
+                        logger.warning(f"⚠️  OCR extracted no text from {img_path.name} - image might be too blurry, dark, or contain no text")
 
                 # Detect document type (checks/statements vs receipts/invoices)
                 # Simple heuristic: check for check keywords
                 text_lower = ocr_result.text.lower()
                 is_check = any(word in text_lower for word in ["pay to the order", "check", "dollars"])
-                is_statement = any(word in text_lower for word in ["statement", "balance", "transaction"])
+                # Bank/credit card statements: look for keywords OR pattern of multiple transactions with amounts
+                is_statement = (
+                    any(word in text_lower for word in ["statement", "balance", "transaction", "account", "card"]) or
+                    _looks_like_statement(ocr_result.text)  # Pattern-based detection
+                )
+                
+                if dry_run:
+                    if is_statement:
+                        logger.info("Detected document type: Bank/Credit Card Statement")
+                    elif is_check:
+                        logger.info("Detected document type: Check")
+                    else:
+                        logger.info("Detected document type: Receipt/Invoice")
 
                 # Extract fields
                 if is_check:
@@ -129,6 +184,11 @@ def parse_command(
                         "_ocr_confidence": ocr_result.confidence,
                         "_low_conf_tokens": [t for t in ocr_result.tokens if t.get("confidence", 1.0) < 0.80],
                     }
+                    # Log what was extracted for debugging
+                    if dry_run:
+                        logger.info(f"Extracted from check - Date: {extracted.get('date')}, Payee: {extracted.get('vendor')}, Amount: {extracted.get('amount')}, Check #: {extracted.get('check_number')}")
+                        if not any([extracted.get('vendor'), extracted.get('amount'), extracted.get('date')]):
+                            logger.warning("⚠️  Check extraction found minimal fields - OCR may need improvement")
                 elif is_statement:
                     stmt_data = extract_statement_fields(ocr_result.text)
                     extracted = {
@@ -139,9 +199,17 @@ def parse_command(
                         "_ocr_confidence": ocr_result.confidence,
                         "_low_conf_tokens": [t for t in ocr_result.tokens if t.get("confidence", 1.0) < 0.80],
                     }
+                    # Log what was extracted for debugging
+                    if dry_run:
+                        logger.info(f"Extracted from statement - Date: {extracted.get('date')}, Amount: {extracted.get('amount')}, Vendor: {extracted.get('vendor')}")
+                        if not extracted.get("vendor") and not extracted.get("amount"):
+                            logger.warning("⚠️  Statement extraction found no transactions - check OCR text quality")
                 else:
                     # Standard receipt/invoice
                     extracted = extractor.extract_all(ocr_result)
+                    # Log what was extracted for debugging
+                    if dry_run:
+                        logger.info(f"Extracted fields - Date: {extracted.get('date')}, Amount: {extracted.get('amount')}, Vendor: {extracted.get('vendor')}")
 
                 # Classify
                 category, category_conf, hints = classifier.classify(extracted)
@@ -155,6 +223,10 @@ def parse_command(
                 # Triage
                 if triage_engine:
                     row = triage_engine.analyze_row(row, violations)
+                
+                # Update missing fields with explanations based on flags
+                from itbl.normalize.schemas import update_row_with_explanations
+                row = update_row_with_explanations(row)
 
                 # Check duplicates
                 if not deduplicator.is_duplicate(row):
@@ -171,9 +243,37 @@ def parse_command(
         if dry_run:
             total = sum(len(rows) for rows in all_rows_by_category.values())
             logger.info(f"DRY RUN: Would write {total} rows across {len(all_rows_by_category)} categories")
-            for category, rows in list(all_rows_by_category.items())[:3]:
-                for row in rows[:2]:  # Show first 2 per category
-                    logger.info(f"[{category}] {row.get('Date')} | {row.get('Vendor')} | {row.get('Amount')}")
+            logger.info("")
+            logger.info("=" * 60)
+            logger.info("EXAMPLE: What will be written to your workbook")
+            logger.info("=" * 60)
+            
+            for category, rows in all_rows_by_category.items():
+                logger.info("")
+                logger.info(f"📋 Category/Tab: {category}")
+                sheets_config = load_sheets_config()
+                columns = sheets_config["tabs"].get(category, [])
+                logger.info(f"   Columns: {', '.join(columns)}")
+                
+                for i, row in enumerate(rows[:3], 1):  # Show first 3 per category
+                    logger.info(f"")
+                    logger.info(f"   Row {i}:")
+                    # Show all columns that will be written (including explanatory text)
+                    for col in columns:
+                        value = row.get(col)
+                        if value is not None:
+                            # Show explanatory text with indicator
+                            if isinstance(value, str) and any(phrase in value.lower() for phrase in ["not supplied", "could not parse", "low confidence", "ocr quality"]):
+                                logger.info(f"      {col}: {value} ⚠️")
+                            else:
+                                logger.info(f"      {col}: {value}")
+                    
+                    # Show flags/triage info
+                    if row.get('_flags'):
+                        logger.info(f"      ⚠️  Flags: {', '.join(row.get('_flags', []))}")
+            
+            logger.info("")
+            logger.info("=" * 60)
             return 0
 
         # Write output by category

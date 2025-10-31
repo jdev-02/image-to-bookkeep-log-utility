@@ -17,20 +17,23 @@ This tool scans images of receipts, invoices, checks, and bank statements (using
 ### Prerequisites
 
 1. **Python 3.11+** (a programming language - download from [python.org](https://www.python.org/downloads/))
-2. **Tesseract OCR** (Optical Character Recognition software that reads text from images):
+2. **Tesseract OCR** (Optical Character Recognition software that reads text from images) - **REQUIRED**:
    - **Windows** (choose one option):
      - **Option A - Direct Download** (recommended if Chocolatey is not installed):
        1. Go to [UB Mannheim Tesseract Releases](https://github.com/UB-Mannheim/tesseract/wiki)
        2. Download the latest Windows installer (e.g., `tesseract-ocr-w64-setup-5.x.x.exe`)
        3. Run the installer and follow the prompts
        4. **Important**: During installation, check "Add to PATH" or manually add Tesseract to your system PATH
-       5. After installation, verify by opening a new terminal/PowerShell and running: `tesseract --version`
+       5. After installation, **close and reopen** your terminal/PowerShell
+       6. Verify by running: `tesseract --version` (should show version number)
      - **Option B - Using Chocolatey** (if you have Chocolatey installed):
        - Run: `choco install tesseract`
      - **Option C - Using Winget** (Windows Package Manager, available on Windows 10/11):
        - Run: `winget install --id UB-Mannheim.TesseractOCR`
    - **macOS**: `brew install tesseract` (requires Homebrew)
    - **Linux**: `apt-get install tesseract-ocr` (Debian/Ubuntu) or `yum install tesseract` (Red Hat/CentOS)
+
+**⚠️ IMPORTANT**: Tesseract MUST be installed before using itbl. If you get "tesseract is not installed" error, install it using one of the options above.
 
 ### Setup
 
@@ -71,6 +74,16 @@ If Tesseract is not found after installation:
    ```
    Or set the path in your Python code by modifying the Tesseract path in `src/itbl/ocr/tesseract.py` if needed.
 
+### HEIC/HEIF Support (Optional, for iPhone/iPad images)
+
+If you have HEIC/HEIF image files (common from iPhone/iPad cameras), install additional support:
+
+```bash
+pip install pillow-heif
+```
+
+Without this package, HEIC files will show a helpful error message suggesting installation or conversion to JPG/PNG.
+
 ### Google Sheets (Optional)
 
 For Google Sheets output (writing directly to Google's online spreadsheets), you'll need:
@@ -86,21 +99,36 @@ See [Google Sheets Setup](#google-sheets-setup) below.
 
 ### Basic Usage
 
+**First, put your test images in `examples/inbox/` folder:**
+- Create the folder: `examples/inbox/`
+- Copy your receipt/invoice/check images there (JPG, PNG, TIFF, or HEIC format)
+- You can put a single file or multiple files in the folder
+
+**Then run one of these commands:**
+
 ```bash
-# Parse images and output CSV (local, offline - no internet needed)
+# Parse a single image file
+itbl parse ./examples/inbox/my_receipt.jpg --out ./staging --target csv
+
+# Parse all images in the inbox folder (local, offline - no internet needed)
 # CSV = Comma-Separated Values, a simple spreadsheet file format
-itbl parse ./inbox --out ./staging --target csv
+itbl parse ./examples/inbox --out ./staging --target csv
 
 # With triage mode (highlights ambiguous cells in yellow)
 # XLSX = Microsoft Excel file format
-itbl parse ./inbox --triage --target xlsx --out ./staging
+itbl parse ./examples/inbox --triage --target xlsx --out ./staging
 
 # Preview without writing (see what would be extracted without creating files)
-itbl parse ./inbox --dry-run
+itbl parse ./examples/inbox --dry-run
+
+# Send directly to Google Sheets
+itbl parse ./examples/inbox --target google-sheets --sheet-id YOUR_SHEET_ID --triage --apply-highlights
 
 # End-to-end with triage (complete workflow with yellow highlighting)
-itbl run ./inbox --triage --target csv --out ./exports
+itbl run ./examples/inbox --triage --target csv --out ./exports
 ```
+
+**Note**: You can also use any folder path - it doesn't have to be `examples/inbox`. Just point to wherever your images are!
 
 ### Command Options
 
@@ -108,6 +136,13 @@ itbl run ./inbox --triage --target csv --out ./exports
 
 ```bash
 itbl parse <input> [OPTIONS]
+
+Arguments:
+  <input>                Path to image file or folder containing images
+                         Examples: 
+                         - Single file: ./examples/inbox/receipt.jpg
+                         - Folder: ./examples/inbox
+                         - Current directory: .
 
 Options:
   --out PATH              Output directory (default: ./staging)
@@ -120,6 +155,8 @@ Options:
   --csv-annotate         Add inline annotations to CSV (wrap uncertain values with review notes)
   --config PATH          Config directory override
   --no-network           Enforce offline mode (default: true - no internet required)
+  --credentials PATH     Path to Google credentials JSON (optional - auto-detected)
+  --sheet-id ID          Google Sheets ID (required for google-sheets target)
 ```
 
 #### `run` command (end-to-end)
@@ -305,11 +342,22 @@ Place test images in `tests/fixtures/`:
 
 ### Windows-Specific Issues
 
-**"Tesseract not found" error:**
-- Make sure Tesseract is installed (see Installation section above)
-- Verify it's in your PATH: run `tesseract --version` in PowerShell
-- If not found, add Tesseract to your PATH (see Setup section above) or reinstall with "Add to PATH" checked
-- After adding to PATH, **close and reopen** your terminal/PowerShell
+**"Tesseract not found" or "tesseract is not installed" error:**
+- **You need to install Tesseract first** - this is a required dependency
+- **Quick install**: Go to [UB Mannheim Tesseract Releases](https://github.com/UB-Mannheim/tesseract/wiki) and download the Windows installer
+- After installing, **close and reopen** your terminal/PowerShell (important!)
+- Verify installation: run `tesseract --version` in PowerShell - it should show a version number
+- If you see an error when running `tesseract --version`:
+  - **Option 1**: Reinstall Tesseract and make sure to check "Add to PATH" during installation
+  - **Option 2**: Manually add Tesseract to PATH:
+    1. Find where Tesseract was installed (usually `C:\Program Files\Tesseract-OCR`)
+    2. Right-click "This PC" → Properties → Advanced system settings → Environment Variables
+    3. Under "System variables" or "User variables", find "Path" → Edit
+    4. Click "New" and add: `C:\Program Files\Tesseract-OCR`
+    5. Click OK on all dialogs
+    6. **Close and reopen** PowerShell completely
+    7. Run `tesseract --version` again to verify
+- The tool will try to auto-detect Tesseract in common locations, but adding it to PATH is the most reliable solution
 
 **Python path issues:**
 - If Python is not recognized, make sure Python is installed and added to PATH

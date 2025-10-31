@@ -14,7 +14,7 @@ class Classifier:
         Initialize classifier.
         
         Args:
-            config_dir: Optional config directory path
+            config_dir: Optional config directory path (str or Path)
         """
         self.vendor_map = load_vendors_config(config_dir) if config_dir else load_vendors_config()
         self.category_keywords = self._build_keyword_map()
@@ -105,8 +105,15 @@ class Classifier:
         """Build keyword-to-category mapping."""
         return {
             "Office Supplies": [
-                "staples", "office depot", "office max", "paper", "pen", "pencil",
+                "staples", "office depot", "office max", "home depot", "paper", "pen", "pencil",
                 "folder", "binder", "envelope", "staple", "printer", "ink", "toner"
+            ],
+            "Phone & Internet": [
+                "comcast", "xfinity", "verizon", "att", "t-mobile", "internet", "phone",
+                "telecom", "cellular", "mobile", "wireless"
+            ],
+            "Home Office": [
+                "coffee", "dunkin", "starbucks", "cafe", "restaurant", "lunch", "meal"
             ],
             "Marketing": [
                 "google ads", "facebook ads", "meta ads", "advertising", "marketing",

@@ -1,12 +1,36 @@
 """Tesseract OCR backend implementation."""
 
+import os
 import re
+from pathlib import Path
 from typing import Dict, List, Tuple
 
 import pytesseract
 from PIL import Image
 
 from itbl.ocr.base import OCRBackend, OCRResult
+
+
+def find_tesseract_executable() -> str | None:
+    """Try to find Tesseract executable on Windows if not in PATH."""
+    import platform
+    
+    if platform.system() != "Windows":
+        return None
+    
+    # Common Windows installation locations
+    possible_paths = [
+        r"C:\Program Files\Tesseract-OCR\tesseract.exe",
+        r"C:\Program Files (x86)\Tesseract-OCR\tesseract.exe",
+        os.path.expanduser(r"~\AppData\Local\Programs\Tesseract-OCR\tesseract.exe"),
+        r"C:\Users\{}\AppData\Local\Programs\Tesseract-OCR\tesseract.exe".format(os.getenv("USERNAME", "")),
+    ]
+    
+    for path in possible_paths:
+        if Path(path).exists():
+            return path
+    
+    return None
 
 
 class TesseractBackend(OCRBackend):
@@ -18,6 +42,7 @@ class TesseractBackend(OCRBackend):
         psm: int = 6,  # Assume uniform block of text
         oem: int = 3,  # Default OCR engine mode
         lang: str = "eng",
+        tesseract_cmd: str | None = None,
     ):
         """
         Initialize Tesseract backend.
@@ -27,11 +52,27 @@ class TesseractBackend(OCRBackend):
             psm: Page segmentation mode (6 = uniform block)
             oem: OCR engine mode (3 = default)
             lang: Language code (e.g., 'eng')
+            tesseract_cmd: Path to tesseract.exe (auto-detected if None)
         """
         self.dpi = dpi
         self.psm = psm
         self.oem = oem
         self.lang = lang
+        
+        # Try to find Tesseract if not in PATH
+        if tesseract_cmd:
+            pytesseract.pytesseract.tesseract_cmd = tesseract_cmd
+        else:
+            # Check if we need to set the path
+            try:
+                pytesseract.get_tesseract_version()
+            except Exception:
+                # Not in PATH, try to find it
+                found_path = find_tesseract_executable()
+                if found_path:
+                    pytesseract.pytesseract.tesseract_cmd = found_path
+                    import logging
+                    logging.getLogger("itbl").info(f"Auto-detected Tesseract at: {found_path}")
 
     def extract(self, image: Image.Image, **kwargs) -> OCRResult:
         """

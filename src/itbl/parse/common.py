@@ -144,24 +144,48 @@ def extract_vendor(text: str) -> Tuple[Optional[str], float]:
     if not lines:
         return None, 0.0
 
+    def is_valid_vendor_name(line: str) -> bool:
+        """Check if line looks like a real vendor name (not OCR garbage)."""
+        line = line.strip()
+        if not line or len(line) < 3:
+            return False
+        
+        # Reject if too many special symbols (OCR noise)
+        special_chars = sum(1 for c in line if not (c.isalnum() or c.isspace() or c in ".,'-&"))
+        if special_chars > len(line) * 0.3:  # More than 30% special chars = likely garbage
+            return False
+        
+        # Reject if mostly single characters/symbols separated by spaces
+        if len(line.split()) > 5 and all(len(word) == 1 for word in line.split()[:5]):
+            return False
+        
+        # Must contain at least one letter
+        if not any(c.isalpha() for c in line):
+            return False
+        
+        # Must have some reasonable length
+        if len(line) < 3 or len(line) > 100:
+            return False
+        
+        return True
+
     # First substantial line often contains vendor
     for line in lines[:5]:  # Check first 5 lines
-        line = line.strip()
-        if len(line) > 3 and len(line) < 100:
-            # Check for common business suffixes
+        if is_valid_vendor_name(line):
+            line_clean = line.strip()
+            # Check for common business suffixes (high confidence)
             if re.search(
-                r"\b(?:Inc|LLC|Corp|Ltd|Co|Company|LLP)\b", line, re.IGNORECASE
+                r"\b(?:Inc|LLC|Corp|Ltd|Co|Company|LLP)\b", line_clean, re.IGNORECASE
             ):
-                return line, 0.85
-            # Otherwise, take first substantial line
-            if len(line) > 10:
-                return line, 0.70
+                return line_clean, 0.85
+            # Otherwise, take first substantial line (medium confidence)
+            if len(line_clean) > 10:
+                return line_clean, 0.70
 
-    # Fallback: return first non-empty line
+    # Fallback: return first valid non-empty line (low confidence)
     for line in lines:
-        line = line.strip()
-        if len(line) > 5:
-            return line, 0.60
+        if is_valid_vendor_name(line):
+            return line.strip(), 0.60
 
     return None, 0.0
 

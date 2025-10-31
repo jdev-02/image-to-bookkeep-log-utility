@@ -6,6 +6,14 @@ from typing import Iterator, List
 
 from PIL import Image
 
+# Try to register HEIC support if pillow-heif is available
+try:
+    from pillow_heif import register_heif_opener
+    register_heif_opener()
+    HEIC_SUPPORTED = True
+except ImportError:
+    HEIC_SUPPORTED = False
+
 
 # Supported image extensions
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".tiff", ".tif", ".heic", ".heif"}
@@ -23,7 +31,18 @@ def find_image_files(path: Path, recursive: bool = True) -> List[Path]:
         for ext in IMAGE_EXTENSIONS:
             files.extend(path.glob(f"{pattern}{ext}"))
             files.extend(path.glob(f"{pattern}{ext.upper()}"))
-    return sorted(files)
+    
+    # Deduplicate (important on Windows where filesystem is case-insensitive)
+    # Convert to absolute paths and use a set to remove duplicates
+    seen = set()
+    unique_files = []
+    for f in files:
+        abs_path = f.resolve()
+        if abs_path not in seen:
+            seen.add(abs_path)
+            unique_files.append(f)
+    
+    return sorted(unique_files)
 
 
 def find_pdf_files(path: Path, recursive: bool = True) -> List[Path]:
@@ -36,14 +55,44 @@ def find_pdf_files(path: Path, recursive: bool = True) -> List[Path]:
         pattern = "**/*" if recursive else "*"
         files.extend(path.glob(f"{pattern}.pdf"))
         files.extend(path.glob(f"{pattern}.PDF"))
-    return sorted(files)
+    
+    # Deduplicate (important on Windows where filesystem is case-insensitive)
+    seen = set()
+    unique_files = []
+    for f in files:
+        abs_path = f.resolve()
+        if abs_path not in seen:
+            seen.add(abs_path)
+            unique_files.append(f)
+    
+    return sorted(unique_files)
 
 
 def load_image(file_path: Path) -> Image.Image:
-    """Load an image file."""
+    """
+    Load an image file.
+    
+    Supports: JPG, PNG, TIFF, HEIC (if pillow-heif is installed)
+    """
+    # Check for HEIC/HEIF files and provide helpful error if not supported
+    if file_path.suffix.lower() in {".heic", ".heif"}:
+        if not HEIC_SUPPORTED:
+            raise IOError(
+                f"HEIC/HEIF format not supported. "
+                f"Please install pillow-heif: pip install pillow-heif\n"
+                f"Or convert {file_path.name} to JPG/PNG format first."
+            )
+    
     try:
         return Image.open(file_path)
     except Exception as e:
+        # Provide more helpful error for HEIC files
+        if file_path.suffix.lower() in {".heic", ".heif"}:
+            raise IOError(
+                f"Failed to load HEIC image {file_path}: {e}\n"
+                f"If pillow-heif is installed, this may be a file corruption issue.\n"
+                f"Try converting the file to JPG/PNG format."
+            ) from e
         raise IOError(f"Failed to load image {file_path}: {e}") from e
 
 

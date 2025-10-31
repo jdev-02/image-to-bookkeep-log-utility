@@ -7,6 +7,102 @@ from typing import Dict, List, Optional
 from itbl.util.config import load_sheets_config
 
 
+def _get_missing_field_explanation(
+    field_name: str,
+    extracted: Dict,
+    flags: List[str] = None,
+) -> str:
+    """
+    Generate explanatory text for missing fields.
+    
+    Args:
+        field_name: Name of the field (e.g., "Date", "Vendor", "Amount")
+        extracted: Extracted data dict
+        flags: List of triage flags (optional, may be added later)
+    
+    Returns:
+        Explanatory string for why field is missing
+    """
+    flags = flags or []
+    field_lower = field_name.lower()
+    flags_str = " ".join(flags) if flags else ""
+    
+    # Check if field was attempted but failed to parse
+    if f"parse_error:{field_lower}" in flags_str:
+        return "Could not parse from image - manual review needed"
+    
+    # Check confidence levels
+    conf_key = f"_{field_lower}_confidence"
+    confidence = extracted.get(conf_key, 1.0)
+    
+    if confidence > 0 and confidence < 0.50:
+        return "Low confidence extraction - needs manual review"
+    elif f"low_conf:{field_lower}" in flags_str:
+        return "Low confidence - extracted but may be inaccurate"
+    
+    # Check OCR confidence
+    ocr_conf = extracted.get("_ocr_confidence", 1.0)
+    if ocr_conf < 0.50:
+        return "OCR quality too low - field not in image or unreadable"
+    
+    # Default: field simply not found/not provided in image
+    return "Not supplied in image"
+
+
+def update_row_with_explanations(row: Dict) -> Dict:
+    """
+    Update row with explanatory text for missing fields based on flags.
+    Call this after triage has run and flags are available.
+    
+    Args:
+        row: Row dict with flags and extracted data
+    
+    Returns:
+        Updated row with explanations in place of empty/missing fields
+    """
+    flags = row.get("_flags", [])
+    extracted = {
+        "date": row.get("Date"),
+        "amount": row.get("Amount"),
+        "vendor": row.get("Vendor") or row.get("Vendor/Supplier") or row.get("Vendor/Payee") or row.get("Vendor/Provider") or row.get("Vendor/Platform"),
+        "_date_confidence": row.get("_date_confidence", 1.0),
+        "_amount_confidence": row.get("_amount_confidence", 1.0),
+        "_vendor_confidence": row.get("_vendor_confidence", 1.0),
+        "_ocr_confidence": row.get("_ocr_confidence", 1.0),
+    }
+    
+    # Update Date if missing or is explanation placeholder
+    if not row.get("Date") or row.get("Date") == "Not supplied in image":
+        row["Date"] = _get_missing_field_explanation("Date", extracted, flags)
+    
+    # Update Amount if missing or is explanation placeholder
+    if not row.get("Amount") or (isinstance(row.get("Amount"), str) and "supplied" in row.get("Amount", "").lower()):
+        # Only replace if it's actually an explanation string, not a number
+        if not isinstance(row.get("Amount"), (int, float)):
+            row["Amount"] = _get_missing_field_explanation("Amount", extracted, flags)
+    
+    # Update Vendor variants if missing
+    vendor_fields = ["Vendor", "Vendor/Supplier", "Vendor/Payee", "Vendor/Provider", "Vendor/Platform", "Insurance Company", "Financial Institution"]
+    for field in vendor_fields:
+        if field in row and (not row[field] or row[field] == "Not supplied in image"):
+            row[field] = _get_missing_field_explanation("Vendor", extracted, flags)
+    
+    # Update other common fields
+    other_fields = {
+        "Payment Method": "Payment Method",
+        "Business Purpose": "Business Purpose",
+        "Invoice #": "Invoice",
+        "Customer/Source": "Customer",
+    }
+    for field, field_key in other_fields.items():
+        if field in row and (not row[field] or row[field] == "Not supplied in image"):
+            # For optional fields, just use default explanation
+            if not row[field]:
+                row[field] = "Not supplied in image"
+    
+    return row
+
+
 def build_normalized_row(
     extracted: Dict,
     source_file: str,
@@ -39,50 +135,54 @@ def build_normalized_row(
     }
 
     # Map extracted fields to schema columns
-    # Common fields
+    # Common fields - use explanatory text only if truly missing
+    date_val = extracted.get("date")
+    amount_val = extracted.get("amount") or extracted.get("amount_digits")
+    vendor_val = extracted.get("vendor") or extracted.get("payee")
+    
     field_mapping = {
-        "Date": extracted.get("date"),
-        "Amount": extracted.get("amount") or extracted.get("amount_digits"),
-        "Vendor": extracted.get("vendor") or extracted.get("payee"),
-        "Vendor/Supplier": extracted.get("vendor") or extracted.get("payee"),
-        "Vendor/Payee": extracted.get("vendor") or extracted.get("payee"),
-        "Vendor/Provider": extracted.get("vendor") or extracted.get("payee"),
-        "Vendor/Platform": extracted.get("vendor") or extracted.get("payee"),
-        "Payment Method": extracted.get("payment_method") or hints.get("payment_method", ""),
+        "Date": date_val if date_val else "Not supplied in image",
+        "Amount": amount_val if amount_val is not None else "Not supplied in image",
+        "Vendor": vendor_val if vendor_val else "Not supplied in image",
+        "Vendor/Supplier": vendor_val if vendor_val else "Not supplied in image",
+        "Vendor/Payee": vendor_val if vendor_val else "Not supplied in image",
+        "Vendor/Provider": vendor_val if vendor_val else "Not supplied in image",
+        "Vendor/Platform": vendor_val if vendor_val else "Not supplied in image",
+        "Payment Method": extracted.get("payment_method") or hints.get("payment_method") or "Not supplied in image",
         "Description": extracted.get("description") or "Receipt",
         "Item/Description": extracted.get("description") or "Receipt",
         "Service/Description": extracted.get("description") or "Receipt",
         "Campaign/Description": extracted.get("description") or "Receipt",
-        "Business Purpose": extracted.get("business_purpose") or "",
-        "Invoice #": extracted.get("invoice_number") or "",
-        "Customer/Source": extracted.get("customer") or "",
+        "Business Purpose": extracted.get("business_purpose") or "Not supplied in image",
+        "Invoice #": extracted.get("invoice_number") or "Not supplied in image",
+        "Customer/Source": extracted.get("customer") or "Not supplied in image",
     }
 
-    # Category-specific mappings
+    # Category-specific mappings - use explanatory text if missing
     if category == "Transportation":
-        row["Miles"] = extracted.get("miles")
-        row["Rate/Mile"] = extracted.get("rate_per_mile")
-        row["From"] = extracted.get("from_location") or ""
-        row["To"] = extracted.get("to_location") or ""
+        row["Miles"] = extracted.get("miles") or "Not supplied in image"
+        row["Rate/Mile"] = extracted.get("rate_per_mile") or "Not supplied in image"
+        row["From"] = extracted.get("from_location") or "Not supplied in image"
+        row["To"] = extracted.get("to_location") or "Not supplied in image"
     elif category == "Insurance":
-        row["Insurance Company"] = extracted.get("vendor") or extracted.get("insurance_company", "")
-        row["Policy Type"] = extracted.get("policy_type") or hints.get("policy_type", "")
-        row["Coverage Period"] = extracted.get("coverage_period") or ""
+        row["Insurance Company"] = (extracted.get("vendor") or extracted.get("insurance_company")) or "Not supplied in image"
+        row["Policy Type"] = extracted.get("policy_type") or hints.get("policy_type") or "Not supplied in image"
+        row["Coverage Period"] = extracted.get("coverage_period") or "Not supplied in image"
     elif category == "Bank Fees":
-        row["Financial Institution"] = extracted.get("vendor") or extracted.get("financial_institution", "")
-        row["Fee Type"] = extracted.get("fee_type") or ""
-        row["Account"] = extracted.get("account") or ""
+        row["Financial Institution"] = (extracted.get("vendor") or extracted.get("financial_institution")) or "Not supplied in image"
+        row["Fee Type"] = extracted.get("fee_type") or "Not supplied in image"
+        row["Account"] = extracted.get("account") or "Not supplied in image"
     elif category == "Marketing":
-        row["Marketing Type"] = extracted.get("marketing_type") or hints.get("marketing_type", "")
+        row["Marketing Type"] = extracted.get("marketing_type") or hints.get("marketing_type") or "Not supplied in image"
     elif category == "COGS":
-        row["Product Line"] = extracted.get("product_line") or hints.get("product_line", "")
+        row["Product Line"] = extracted.get("product_line") or hints.get("product_line") or "Not supplied in image"
 
     # Apply common mappings
     for col in columns:
         if col in field_mapping and col not in row:
             row[col] = field_mapping[col]
         elif col not in row:
-            row[col] = ""  # Empty for unmapped columns
+            row[col] = "Not supplied in image"  # Explanatory text for unmapped columns
 
     # Copy confidence fields
     row["_date_confidence"] = extracted.get("_date_confidence", 0.0)

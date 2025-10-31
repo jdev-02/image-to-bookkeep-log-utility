@@ -11,6 +11,7 @@ tabs:
   Insurance: ["Date","Insurance Company","Policy Type","Coverage Period","Amount","Payment Method"]
   Bank Fees: ["Date","Financial Institution","Fee Type","Business Purpose","Amount","Account"]
   Summary: ["Category","Amount","Notes","Tax Treatment"]
+  Unclassified: ["Date","Vendor","Item/Description","Business Purpose","Amount","Payment Method","Check #","Memo"]
 personal_expense_tab: "Personal Expenses"
 highlight:
   color: "#FFF59D"
